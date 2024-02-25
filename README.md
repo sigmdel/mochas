@@ -13,7 +13,7 @@ While `mochad` converts X10 dim/bright RF packets and transmits them through a T
 
     Error: Mochad: Cannot decode 'Rx RF House: J Func: Bright' 
 
-This script keeps track of the last used X10 unit and then attempts to decrease/increase the level of dimmable light of that unit using the Domoticz HTTP/JSON API when a dim/bright RF packet is received.
+This script holds a list of X10 units numbers and corresponding Domoticiz idx numbers for dimmable lights. It also keeps track of the last used X10 unit number. When a dim/bright packet is received, it attempts to decrease/increase the level of the last used X10 unit. It does this by obtaining the current light level of the corresponding device using the Domoticz HTTP/JSON API and then sets the new decreased or increased light level using the same API.
 
 ## Status
 
