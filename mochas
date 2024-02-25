@@ -1,0 +1,289 @@
+#!/usr/bin/python3
+#
+# mochas - Domoticz mochad gateway assistant
+#
+# A script to handle bright/dim RF packets for dimmable devices in Domoticz
+# version 0.1 (2024-02-24)
+#
+# Copyright (c) 2024 sigmdel <https://sigmdel.ca>
+# This software is placed in the public domain. Where this is not legally
+# acceptable, the Zero Clause BSD license applies <https://spdx.org/licenses/0BSD.html>
+# SPDX-License-Identifier: 0BSD 
+
+# This executable file should be installed in /usr/local/bin/ 
+# The systemd service file, mochas.service, should be in etc/systemd/system/
+# The JSON configuration file, mochas.json, should be in /etc/mochas/
+
+# Location of configuration file
+CONFIG = "/etc/mochas/mochas.json"
+
+# Default configuration
+# This configuration will be overwritten by the values in the 
+# configuration file.
+#
+# Log level - one of error, info, or debug 
+LOGLEVEL = "error"
+# mochad host IP address
+HOST = "192.168.168.168" 
+# mochad tcp port, this is hard coded in mochad source so unlikely to change
+PORT = 1099              
+# monitored X10 house code, a letter from 'A' to 'P'
+HOUSE = "J" 
+# change in light level for each dim/bright commands
+DELTA = 15               
+# Domoticz host and tcp port, 
+# HTTPS not handled, and user:password not handled in this version
+DOMOTICZ = "192.168.168.168:8080"       
+# Map of X10 unit to Domoticz idx number, the key is a unit number
+# as a string, and the value is the idx number as an integer
+DEVICES = '{"6":66, "7":177, "8":288}'  
+
+# -------------------------------------------------------
+# No need to change anything below except for corrections
+# to programming error / logic
+# -------------------------------------------------------
+
+import socket
+import errno
+import json
+import requests
+import syslog
+
+# Global variables
+unit_idx = None    # X10 unit : Domoticz idx dictionnary
+current_unit = ""  # current unit number 
+current_idx = -1   # current Domoticz switch
+
+# Returns Domoticz idx for the given X10 unit number or -1 if the
+# X10 unit number is not in unit_idx. 
+# Side effect: Updates current_idx
+def get_idx(unit):
+    global current_idx
+    try:
+        current_idx = unit_idx[unit]
+    except:
+        current_idx = -1
+    if current_idx < 0:
+        syslog.syslog(syslog.LOG_INFO, "Unit {} is not dimmable".format(unit))
+    else:
+        syslog.syslog(syslog.LOG_DEBUG, "Unit {} is dimmable device idx {}".format(unit, current_idx))
+    return current_idx
+
+# Returns the light level of the given X10 unit if it is in the
+# unit_idx map and Domoticz returned a valid level, otherwise -1
+def get_level(unit):
+    if get_idx(unit) < 0: return -1 # error already logged
+    clev = -1 # assume failure
+    with requests.get('http://{}/json.htm?type=command&param=getdevices&rid={}'.format(DOMOTICZ, current_idx)) as rq:
+        syslog.syslog(syslog.LOG_DEBUG, "Response to level request: {}".format(repr(rq)[:48]))
+        data = rq.json()
+        ## possible values to return
+        ##   data["result"][0]["Level"])
+        ##   data["result"][0]["LevelInt"])
+        ## In some cases this might be needed
+        ##   data["result"][0]["MaxDimLevel"])
+        ## but not here
+        try:
+            clev = data["result"][0]["LevelInt"]
+        except:
+            pass
+        if clev < 0:
+            syslog.syslog(syslog.LOG_INFO, "Domoticz did not return valid level for current_unit {} (idx {})".format(unit, current_idx))
+        else:
+            syslog.syslog(syslog.LOG_DEBUG, "Domoticz returned level = {} for current_unit {} (idx {})".format(clev, unit, current_idx))
+    return clev
+
+# Sets the level of the given X10 unit to a 
+#   new level = (current level + delta) clamped between 0 and 100
+# If new level < 5 then the device is turned off and
+# new level set to 0
+def set_level(unit, delta):
+    newLevel = get_level(unit)
+    if newLevel < 0: return  # error already reported
+    if newLevel < 5: newLevel = 0;  # level is so low, turn lamp off
+    if newLevel >= 0:
+        newLevel = newLevel + delta
+        if newLevel > 100:
+            newLevel = 100
+        elif newLevel < 0:
+            newLevel = 1
+        with requests.get('http://{}/json.htm?type=command&param=switchlight&idx={}&switchcmd=Set%20Level&level={}'.format(DOMOTICZ, current_idx, newLevel)) as rq:
+			########### should check for ok result
+            syslog.syslog(syslog.LOG_DEBUG, repr(rq))
+            syslog.syslog(syslog.LOG_INFO, "Level of current_unit {} (idx={}) set to {}".format(current_unit, current_idx, newLevel))
+        if newLevel < 5:
+            with requests.get('http://{}/json.htm?type=command&param=switchlight&idx={}&switchcmd=Off'.format(DOMOTICZ, current_idx)) as rq:
+				########### should to check for ok
+                newLevel = 0;
+                syslog.syslog(syslog.LOG_DEBUG, repr(rq))
+                syslog.syslog(syslog.LOG_INFO, "Unit {} (idx={}) turned off and level set to 0".format(current_unit, current_idx))         
+    return newLevel
+
+
+# Syntax of Rx RF packets
+#
+# 0     1        2  3  4          5  6     7
+# 02/20 18:53:40 Rx RF HouseUnit: J3 Func: On
+# 02/20 19:13:07 Rx RF HouseUnit: J6 Func: Off
+#
+# 0     1        2  3  4          5  6     7
+# 02/20 19:13:08 Rx RF House:     J  Func: Bright
+# 02/20 19:13:14 Rx RF House:     J  Func: Dim
+#
+# Invariant: parts 2 = Rx, 3 = RF, 6 = Func
+
+
+# Parses X10 RF packet to ensure a valid packet was received
+# and in the case of 
+#  a HouseUnit packet, save the unit number in current_unit
+#  a House packet, calls on set_level to change the level of the 
+#  current_unit
+def handle_X10_rf_packet(data):
+    global current_unit
+
+    parts = data.decode().split(' ')
+
+    #for e in parts: print(e)
+    if len(parts) < 8:
+        syslog.syslog(syslog.LOG_INFO, "Rx RF packet too short")
+        return
+
+    #remove trailing LF
+    parts[7] = parts[7].rstrip()
+
+    # get action to perform
+    # action = -1: received invalid packet - do nothing
+    # action =  0: it is an on/off command - do nothing mochad handled it
+    # action =  1: it is a bright/dim command - act on it
+    action = -1
+    if parts[4] == "HouseUnit:":
+        action = 0
+    elif parts[4] == "House:" and current_unit:
+        if parts[7] == "Dim":
+            delta = -DELTA
+        elif parts[7] == "Bright":
+            delta = DELTA
+        else:
+            syslog.syslog(syslog.LOG_INFO("Rx RF House missing Dim/Bright command"))
+            return
+        action = 1
+
+    # validate packet
+    if action < 0:
+        syslog.syslog(syslog.LOG_INFO, 'not a valid "House" or "HouseUnit" packet or "House" packet with no current_unit defined')
+        return
+
+    if HOUSE != parts[5][0]:
+        syslog.syslog(syslog.LOG_INFO, 'House "{}" is invalid'.format(parts[5][0]))
+        return
+
+    if (parts[2] != "Rx") or (parts[3] != "RF") or (parts[6] != "Func:"):
+        syslog.syslog(syslog.LOG_INFO, "not valid RF Rx packet")
+        return
+
+    if (action == 1):
+        syslog.syslog(syslog.LOG_DEBUG, "{}{} {}".format(parts[5], current_unit, parts[7]))
+        set_level(current_unit, delta)
+    else:
+        current_unit = parts[5][1]  # save current_unit for next Bright/Dim command
+        syslog.syslog(syslog.LOG_DEBUG, "{} {}".format(parts[5], parts[7]))
+
+
+BUFFER_SIZE = 1024  # ample size for an X10 RF packet
+
+# The main loop of the program, it receives all RF packets from 
+# mochad and calls on handle_X10_rf_packet.
+# The loop exists when the connection to mochad is broken.
+def listen_to_mochad(host, port):
+    global count
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.connect((host, int(port)))
+        syslog.syslog(syslog.LOG_INFO, 'Connected to mochad')
+        while True:
+            data = s.recv(BUFFER_SIZE)
+            if not data:
+                raise OSError(errno.ECONNRESET, "Connection to mochad reset")
+            handle_X10_rf_packet(data)
+
+# Sets the syslog log level ('error', 'info', 'debug')
+def set_loglevel(level):
+    level = level.upper()[:3]
+    if level=="ERR":
+       loglevel = syslog.LOG_ERR
+    elif level=="DEB":
+       loglevel = syslog.LOG_DEBUG
+    else:
+       loglevel = syslog.LOG_INFO    # assume 'info'
+    syslog.setlogmask(syslog.LOG_UPTO(loglevel))
+
+
+# Loads the configuration file 
+def load_config():
+    global HOST
+    global PORT
+    global HOUSE
+    global DELTA
+    global DOMOTICZ
+    global unit_idx
+    LOGLEVEL = "error"
+    try:
+        with open(CONFIG) as f:
+            data = json.load(f)
+
+            LOGLEVEL = data.get("loglevel", LOGLEVEL)
+            set_loglevel(LOGLEVEL)
+            syslog.syslog(syslog.LOG_DEBUG, "Read param loglevel {}".format(LOGLEVEL))
+
+            HOST = data.get("host", HOST)
+            syslog.syslog(syslog.LOG_DEBUG, "Read param host {}".format(HOST))
+
+            PORT = data.get("port", PORT)
+            syslog.syslog(syslog.LOG_DEBUG, "Read param port {}".format(PORT))
+
+            HOUSE = data.get("house", HOUSE)
+            syslog.syslog(syslog.LOG_DEBUG, "Read param house {}".format(HOUSE))
+
+            DELTA = data.get("delta", DELTA)
+            syslog.syslog(syslog.LOG_DEBUG, "Read param delta {}")
+
+            DOMOTICZ = data.get("domoticz", DOMOTICZ)
+            syslog.syslog(syslog.LOG_DEBUG, "read domoticz")
+
+            unit_idx = data.get("devices", DEVICES)
+            syslog.syslog(syslog.LOG_DEBUG, "read devices {}".format(unit_idx))
+
+    except FileNotFoundError:
+        syslog.syslog(syslog.LOG_INFO, "Configuration file {} not found".format(CONFIG))
+
+    except Exception as E:
+        syslog.syslog(syslog.LOG_INFO, "Error reading {}, {}".format(CONFIG, repr(E)))
+
+    if unit_idx == None:
+        unit_idx = json.loads(DEVICES)
+        syslog.syslog(syslog.LOG_INFO, "idx list invalid, using {}".format(unit_idx))
+
+#-----------------------------------------------------------------------
+
+syslog.openlog('mochas', syslog.LOG_UPTO(syslog.LOG_DEBUG))
+syslog.syslog("Starting mochas")
+load_config()
+try:
+    listen_to_mochad(HOST, PORT)
+except ConnectionRefusedError:
+    syslog.syslog(syslog.LOG_ERR, "Host {}:{} refused connection".format(HOST, PORT))
+    exit(1)
+except KeyboardInterrupt:
+    syslog.syslog(syslog.LOG_ERR, "User interrupt")  ## exit code 130
+    exit(2)
+except OSError as E:
+    if E.errno == errno.EHOSTUNREACH:
+        syslog.syslog(syslog.LOG_ERR, "No route to {}".format(HOST))
+        exit(3)
+    elif E.errno == errno.ECONNRESET:
+        syslog.syslog(syslog.LOG_ERR, "{}:{} reset the connection".format(HOST, PORT))
+        exit(4)
+    else:
+        raise
+except Exception as E:
+    syslog.syslog(syslog.LOG_ERR, "Exception: {}".format(repr(E)))
+    exit(5)

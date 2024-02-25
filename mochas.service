@@ -1,0 +1,15 @@
+[Unit]
+Description=A Domoticz mochad gateway assistant
+Requires=mochad.service
+After=multi-user.target
+
+[Service]
+Type=simple
+RestartSec=5
+Restart=always
+ExecStart=/usr/local/bin/mochas  &
+StandardError=null
+
+[Install]
+WantedBy=multi-user.target
+
