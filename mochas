@@ -11,7 +11,7 @@
 # SPDX-License-Identifier: 0BSD 
 
 # This executable file should be installed in /usr/local/bin/ 
-# The systemd service file, mochas.service, should be in etc/systemd/system/
+# The systemd service file, mochas.service, should be in /etc/systemd/system/
 # The JSON configuration file, mochas.json, should be in /etc/mochas/
 
 # Location of configuration file
