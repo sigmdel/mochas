@@ -8,9 +8,9 @@
 # Copyright (c) 2024 sigmdel <https://sigmdel.ca>
 # This software is placed in the public domain. Where this is not legally
 # acceptable, the Zero Clause BSD license applies <https://spdx.org/licenses/0BSD.html>
-# SPDX-License-Identifier: 0BSD 
+# SPDX-License-Identifier: 0BSD
 
-# This executable file should be installed in /usr/local/bin/ 
+# This executable file should be installed in /usr/local/bin/
 # The systemd service file, mochas.service, should be in /etc/systemd/system/
 # The JSON configuration file, mochas.json, should be in /etc/mochas/
 
@@ -42,11 +42,11 @@ import syslog
 # Global variables
 settings = {}      # dictionnary with all program settings, see defaults below
 unit_idx = None    # X10 unit : Domoticz idx dictionnary
-current_unit = ""  # current unit number 
+current_unit = ""  # current unit number
 current_idx = -1   # current Domoticz switch
 
 # Returns Domoticz idx for the given X10 unit number or -1 if the
-# X10 unit number is not in settings['DEVICES']. 
+# X10 unit number is not in settings['DEVICES'].
 # Side effect: Updates current_idx
 def get_idx(unit):
     global current_idx
@@ -203,15 +203,14 @@ def set_loglevel(level):
        loglevel = syslog.LOG_INFO    # assume 'info'
     syslog.setlogmask(syslog.LOG_UPTO(loglevel))
 
-# Loads the configuration file 
+# Loads the configuration file
 def load_config():
     global settings
     settings = {}
     try:
         with open(CONFIG, 'r', encoding="utf-8") as f: 
-           settings = json.load(f)      
-        #print("settings: ", settings);
-        set_loglevel(settings["LOGLEVEL"][:3])
+           settings = json.load(f)
+        set_loglevel(settings["LOGLEVEL"])
         syslog.syslog(syslog.LOG_DEBUG, "Settings: {}".format(settings))
     except FileNotFoundError:
         syslog.syslog(syslog.LOG_INFO, "Configuration file {} not found".format(CONFIG))
