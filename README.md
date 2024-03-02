@@ -31,7 +31,7 @@ This version works and is already in use but it has limitations which include:
 - `mochas.json.template` - a model JSON configuration file that should be modified and installed in `/etc/mochas/` as `mochas.json`.
 - `mochad.service` - the systemd service file that could be installed in `/etc/systemd/system/`.
 
-If `mochas` is installed in any other directory than one suggested, modify `ExecStart` in `mochad.service` accordingly.
+If `mochas` is installed in a directory other than the one suggested, `ExecStart` in `mochad.service` must be modified accordingly.
 
 Only `root`, the owner of `mochas` in `/usr/local/bin`, should have read, write, and execute permissions over the script:   
 `# sudo chmod 700 mochas`
