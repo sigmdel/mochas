@@ -1,10 +1,10 @@
 # mochas
 
-Domoticz **moch**ad gateway **as**sistant for dim/bright RF packets
+Domoticz **Moch**ad bridge **as**sistant for dim/bright RF packets
 
  A Python3 script to handle X10 bright/dim RF packets for dimmable devices in Domoticz
 
-**Version 0.2 (2024-02-26)**
+**Version 0.3 (2024-03-02)**
 
 ---
 
@@ -14,17 +14,16 @@ While `mochad` converts all X10 wireless packets received by a CM15A or CM19A co
 
     Error: Mochad: Cannot decode 'Rx RF House: J Func: Bright' 
 
-This script holds a list of X10 units numbers and corresponding Domoticiz idx numbers for dimmable lights. It also keeps track of the last used X10 unit number. When a dim/bright packet is received, it attempts to decrease/increase the level of the last used X10 unit. It does this by obtaining the current light level of the corresponding device using the Domoticz HTTP/JSON API and then sets the new decreased or increased light level using the same API.
+This script holds a dictionary of X10 units numbers and corresponding Domoticiz idx numbers of dimmable devices. It also keeps track of the last used X10 unit number. When a dim/bright packet is received, it attempts to decrease/increase the level of the last used X10 unit. It does this by obtaining the current light level of the corresponding device using the Domoticz HTTP/JSON API and then sets the new decreased or increased light level using the same API.
 
 ## Status
 
-This is only version 0.2, but it works and is already in use. 
-
-Current limitations include:
+This version works and is already in use but it has limitations which include:
 
   - HTTP requests only 
   - IPv4 host addresses only
-  - User:password not supported
+  - Username:password requests not supported. 
+      - `Domoticz` and `mochas` must be on the same subnet which must be included in the **Trusted Networks (no username/password)** in the `Domoticz Security`` settings.
 
 ## Source
 
@@ -67,4 +66,5 @@ The configuration file is JSON formatted. Here is the template which will have t
 | DOMOTICZ  | Domoticz IP address and TCP port |
 | DEVICES   | Map of key:value pairs where the key is a X10 unit number (from "1" to "16") and its value is the Domoticz light sensor idx number of the corresponding dimmable light |
 
-**Note**: No sanity checks are done when reading the configuration file. 
+**Note: All the keys are mandatory.** 
+  - Their presence is verified when the configuration file is loaded. That is the only validity check done when reading the configuration file. 
