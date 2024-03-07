@@ -3,7 +3,7 @@
 # mochas - Domoticz Mochad bridge assistant
 #
 # A script to handle X10 bright/dim RF packets for dimmable devices in Domoticz
-# version 0.3 (2024-03-02)
+# version 0.4 (2024-03-02)
 #
 # Copyright (c) 2024 sigmdel <https://sigmdel.ca>
 # This software is placed in the public domain. Where this is not legally
@@ -129,7 +129,7 @@ def update_level(unit, delta):
 # 02/20 18:53:40 Rx RF HouseUnit: J3 Func: On
 # 02/20 19:13:08 Rx RF House:     J  Func: Bright
 #
-# Invariant: parts 2 = Rx, 3 = RF, 6 = Func
+# Invariant: parts 2 = Rx and 6 = Func
 
 
 # Parses X10 RF packet to ensure a valid packet was received
@@ -147,10 +147,14 @@ def handle_X10_rf_packet(data):
         syslog.syslog(syslog.LOG_DEBUG, "X10 packet too short") # happens often
         return
 
-    if (parts[2] != "Rx") or (parts[3] != "RF") or (parts[6] != "Func:"):
-        syslog.syslog(syslog.LOG_DEBUG, "Not valid X10 RF Rx packet")
+    if (parts[2] != "Rx") or (parts[6] != "Func:"):
+        syslog.syslog(syslog.LOG_DEBUG, "Not valid X10 Rx packet")
         return
 
+    if (parts[3] != "RF") and (part[3] != "PL"):
+        syslog.syslog(syslog.LOG_DEBUG, "Not valid X10 RF or PL packet")
+        return
+        
     if settings['HOUSE'] != parts[5][0]:
         syslog.syslog(syslog.LOG_DEBUG, f"House '{parts[5][0]}' is not monitored")
         return
@@ -257,7 +261,7 @@ try:
     listen_to_mochad(settings["HOST"], settings["PORT"])
 
 except KeyboardInterrupt:
-    syslog.syslog(syslog.LOG_ERR, "\nUser interrupt")  ## exit code 130
+    syslog.syslog(syslog.LOG_ERR, "User interrupt")  ## exit code 130
     exit(1)
 except OSError as E:
     # 104 - connection to mochad reset because CM1x disconnected
