@@ -1,6 +1,6 @@
 [Unit]
 Description=A Domoticz Mochad bridge assistant
-Requires= mochad.service
+Requires=mochad.service
 After=multi-user.target mochad.service
 
 [Service]
