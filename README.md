@@ -4,17 +4,17 @@ Domoticz **Moch**ad bridge **as**sistant for dim/bright RF packets
 
  A Python3 script to handle X10 bright/dim RF packets for dimmable devices in Domoticz
 
-**Version 0.3 (2024-03-02)**
+**Version 0.4 (2024-03-06)**
 
 ---
 
 ## Raison d'être
 
-While `mochad` converts all X10 wireless packets received by a CM15A or CM19A controller and transmits them through a TCP socket, the Domoticz *Mochad CM15Pro/CM19A bridge with LAN interface* decodes only On and Off packets. The bridge cannot decode Dim and Bright packets.
+All X10 power line packet received by a CM15A controller and X10 wireless packets received by a CM15A or CM19A controller are retransmitted through a TCP socket connections by `mochad`. The Domoticz *Mochad CM15Pro/CM19A bridge with LAN interface* decodes only the On and Off packets it receives rom `mochad`. The Mochad bridge cannot decode Dim and Bright packets.
 
     Error: Mochad: Cannot decode 'Rx RF House: J Func: Bright' 
 
-This script holds a dictionary of X10 units numbers and corresponding Domoticiz idx numbers of dimmable devices. It also keeps track of the last used X10 unit number. When a dim/bright packet is received, it attempts to decrease/increase the level of the last used X10 unit. It does this by obtaining the current light level of the corresponding device using the Domoticz HTTP/JSON API and then sets the new decreased or increased light level using the same API.
+This script holds a dictionary of X10 units numbers and corresponding Domoticiz idx numbers of dimmable devices. It also keeps track of the last used X10 unit number. When a dim/bright packet is received, it attempts to decrease/increase the level of the last used X10 unit. It does this by obtaining the current light level of the corresponding device using the Domoticz HTTP/JSON API and then sets the new modified light level using the same API.
 
 ## Status
 
@@ -24,6 +24,13 @@ This version works and is already in use but it has limitations which include:
   - IPv4 host addresses only
   - Username:password requests not supported. 
       - `Domoticz` and `mochas` must be on the same subnet which must be included in the **Trusted Networks (no username/password)** in the `Domoticz Security`` settings.
+
+It has been tested with a CM15A controller which means only `mochas` has only forwarded RF packets. Assuming that there is only one difference between RF and PL packets is that two-letter label     
+
+    02/01 18:57:11 Rx RF HouseUnit: J1 Func: On
+    02/01 18:57:15 Rx PL HouseUnit: J3 Func: Off
+
+then this helper service should work with power line packets received with the CM15A controller.
 
 ## Source
 
