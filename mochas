@@ -138,7 +138,7 @@ def update_level(unit, delta):
 #  a House packet, change the level of the current unit with update_level
 def handle_X10_rf_packet(data):
     global current_unit
-    syslog.syslog(syslog.LOG_DEBUG, f"(current_unit={current_unit}; X10 packet={data}")
+    syslog.syslog(syslog.LOG_DEBUG, f"(current_unit='{current_unit}'; X10 packet={data}")
     parts = data.split(' ')
     #for e in parts: print(e)
 
@@ -178,7 +178,7 @@ def handle_X10_rf_packet(data):
         return
     if parts[4] == "House:":
         if not current_unit:
-            syslog.sylog(syslog.LOG_DEBUG, "No current unit defined")
+            syslog.syslog(syslog.LOG_DEBUG, "No current unit defined")
             return
         delta = settings['DELTA']    
         if action  == "Dim":
