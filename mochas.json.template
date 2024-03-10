@@ -4,6 +4,9 @@
   "PORT": 1099,
   "HOUSE": "J",
   "DELTA": 15,
+  "CREDS64": "",
+  "TLS": false,
+  "VERIFY": true,
   "DOMOTICZ": "192.168.168.168:8080",
   "DEVICES": {
     "6": 66,
