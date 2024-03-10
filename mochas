@@ -22,6 +22,9 @@
 #   "PORT": 1099,
 #   "HOUSE": "K",
 #   "DELTA": 15,
+#   "CREDS64": "",
+#   "TLS": false,
+#   "VERIFY": true,
 #   "DOMOTICZ": "192.168.168.2:8080",
 #   "DEVICES": {
 #     "6": 66,
@@ -29,6 +32,8 @@
 #     "8": 288
 #   }
 # }
+#
+# CREDS64, TLS and VERIFY are optional
 #
 # Location of configuration file
 CONFIG = "/etc/mochas/mochas.json"
@@ -41,9 +46,19 @@ import json
 import requests
 import syslog
 
+def disable_insecureWarning():
+    import urllib3;
+    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+    # Removes this warning when making https request:
+    # /usr/lib/python3/dist-packages/urllib3/connectionpool.py:1020: InsecureRequestWarning: Unverified HTTPS request is being made to host '192.168.1.22'.
+    # Adding certificate verification is strongly advised. See: https://urllib3.readthedocs.io/en/latest/advanced-usage.html#ssl-warnings
+
+
 # Global variables
 settings = {}      # dictionnary with all program settings, see defaults below
 url_prefix = ""    # define after reading settings
+http_header = {}   # for user:password (base64 encoded) authentication
+verify_ca = False  # only done if https is used
 current_unit = ""  # current unit number
 
 # Returns Domoticz idx for the given X10 unit number or
@@ -62,8 +77,8 @@ def get_idx(unit):
 # Common HTTP request to Domoticz, returns the Domoticz response if
 # the HTTP return code is 200 code or raises an exception
 def make_request(query):
-    rq = requests.get(f"{url_prefix}{query}", timeout=2)
-    rq.raise_for_status()  # HTTP errors (i.e. 404) will become an HTTPError exception 
+    rq = requests.get(f"{url_prefix}{query}", headers=http_header, verify=verify_ca, timeout=2)
+    rq.raise_for_status()  # HTTP errors (i.e. 404) will become an HTTPError exception
     syslog.syslog(syslog.LOG_DEBUG, f"Response to '{query}' query: {repr(rq)[:48]}...")
     return rq
 
@@ -77,9 +92,9 @@ def get_level(idx):
            if not data["SwitchType"] == "Dimmer":
               syslog.syslog(syslog.LOG_ERR, f"device {idx} is not a dimmer")
            elif not data["DimmerType"] == "abs":
-              syslog.syslog(syslog.LOG_ERR, f"dimmer {idx} level is not set absolutely")    
+              syslog.syslog(syslog.LOG_ERR, f"dimmer {idx} level is not set absolutely")
            elif not data["MaxDimLevel"] == 100:
-              syslog.syslog(syslog.LOG_ERR, f"the level of dimmer {idx} is not a percentage")    
+              syslog.syslog(syslog.LOG_ERR, f"the level of dimmer {idx} is not a percentage")
            else:
               level = data["LevelInt"]
               if (level < 0) or (level > 100):
@@ -92,24 +107,24 @@ def get_level(idx):
             syslog.syslog(syslog.LOG_ERR, f"Error {e} reading device {idx} status")
     return -1
 
-# Sets the light level of the given Domoticz device 
+# Sets the light level of the given Domoticz device
 def set_level(idx, value):
     with make_request(f"switchlight&idx={idx}&switchcmd=Set%20Level&level={value}"):
-        syslog.syslog(syslog.LOG_DEBUG, f"dimmer {idx} level set to {value}") 
+        syslog.syslog(syslog.LOG_DEBUG, f"dimmer {idx} level set to {value}")
     # Good idea to call get_level() to check ??
 
-# Adds delta to the light level of the X10 device, 
-# Returns 
+# Adds delta to the light level of the X10 device,
+# Returns
 #   -1 if 'unit' is not in the configuration devices
 #   -2 if unable to get the current level of the Domoticz device
-#   >= 0, the new level of the device 
+#   >= 0, the new level of the device
 def update_level(unit, delta):
     currentIdx = get_idx(unit)
     if currentIdx < 0: return -1
-    oldLevel = get_level(currentIdx)   
+    oldLevel = get_level(currentIdx)
     if oldLevel < 0: return -2
     if oldLevel == 1: oldLevel = 0
-    newLevel = oldLevel + delta    
+    newLevel = oldLevel + delta
     # clamp the value
     if newLevel > 100:
         newLevel = 100
@@ -133,7 +148,7 @@ def update_level(unit, delta):
 
 
 # Parses X10 RF packet to ensure a valid packet was received
-# and in the case of 
+# and in the case of
 #  a HouseUnit packet, save the unit number in current_unit
 #  a House packet, change the level of the current unit with update_level
 def handle_X10_rf_packet(data):
@@ -154,7 +169,7 @@ def handle_X10_rf_packet(data):
     if (parts[3] != "RF") and (part[3] != "PL"):
         syslog.syslog(syslog.LOG_DEBUG, "Not valid X10 RF or PL packet")
         return
-        
+
     if settings['HOUSE'] != parts[5][0]:
         syslog.syslog(syslog.LOG_DEBUG, f"House '{parts[5][0]}' is not monitored")
         return
@@ -174,13 +189,13 @@ def handle_X10_rf_packet(data):
             except:
                 syslog.syslog(syslog.LOG_DEBUG, f"'{parts[5][1:]}' is an invalid device number")
         else:
-            syslog.syslog(syslog.LOG_DEBUG, f"'{action}' is an invalid action")              
+            syslog.syslog(syslog.LOG_DEBUG, f"'{action}' is an invalid action")
         return
     if parts[4] == "House:":
         if not current_unit:
             syslog.syslog(syslog.LOG_DEBUG, "No current unit defined")
             return
-        delta = settings['DELTA']    
+        delta = settings['DELTA']
         if action  == "Dim":
             delta = -delta
         elif not action == "Bright":
@@ -192,23 +207,22 @@ def handle_X10_rf_packet(data):
         elif clev == -1:
             syslog.syslog(syslog.LOG_DEBUG, "no matching device")
         else:
-            syslog.syslog(syslog.LOG_DEBUG, f"level of unit {current_unit} set to {clev}")  
+            syslog.syslog(syslog.LOG_DEBUG, f"level of unit {current_unit} set to {clev}")
         return
     syslog.syslog(syslog.LOG_DEBUG, f"'{parts[4]}' is an invalid address type")
 
 
 BUFFER_SIZE = 1024  # ample size for an X10 RF packet
 
-# The main loop of the program, it receives all RF packets from 
+# The main loop of the program, it receives all RF packets from
 # mochad and calls on handle_X10_rf_packet.
 # The loop exists when the connection to mochad is broken.
 # Default timeout on Linux Mint is ~ 130 seconds!
 def listen_to_mochad(host, port):
-    print(f"listen_to{(host, port)}")
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.settimeout(MOCHAD_TIMEOUT)
         s.connect((host, port))
-        s.settimeout(None)                                         
+        s.settimeout(None)
         syslog.syslog(syslog.LOG_INFO, 'Connected to mochad')
         while True:
             data = s.recv(BUFFER_SIZE)
@@ -231,19 +245,49 @@ def set_loglevel(level):
 def load_config():
     global settings
     global url_prefix
+    global http_header
+    global verify_ca
+
     settings = {}
     try:
-        with open(CONFIG, 'r', encoding="utf-8") as f: 
+        with open(CONFIG, 'r', encoding="utf-8") as f:
            settings = json.load(f)
+
+        # Keys CREDS64, TLS and VERIFY are optional, so set their default value
+        # if they are not set in the configuration file
+        settings.setdefault('CREDS64', '')
+        settings.setdefault('TLS', False)
+        settings.setdefault('VERIFY', True)
+
+        # Check that all keys present
         keys = settings.keys();
-        wanted = ['LOGLEVEL', 'HOST', 'PORT', 'HOUSE', 'DELTA', 'DOMOTICZ', 'DEVICES']
+        wanted = ['LOGLEVEL', 'HOST', 'PORT', 'HOUSE', 'DELTA', 'DOMOTICZ', 'CREDS64', 'TLS', 'VERIFY', 'DEVICES']
         for want in wanted:
-            if not want in keys: 
+            if not want in keys:
                 syslog.syslog(syslog.LOG_ERR, f'Key "{want}" missing from {CONFIG}')
                 exit(6)
+        syslog.syslog(syslog.LOG_DEBUG, f"Settings: {settings}")
+
+        if settings['CREDS64']:
+            http_header['Authorization'] = f"Basic {settings['CREDS64']}"
+            syslog.syslog(syslog.LOG_DEBUG, "Basic authentication will be used")
+        else:
+            http_header = {}
+            syslog.syslog(syslog.LOG_DEBUG, "No authentication will be used")
+
+        protocol = "http"
+        if settings['TLS']:
+            protocol = "https"
+            verify_ca = settings['VERIFY']
+            if not verify_ca:
+                disable_insecureWarning()
+        else:
+            verify_ca = False  # only done if TLS is used
+
+        syslog.syslog(syslog.LOG_DEBUG, f"Will use {protocol} with verify CA set to {verify_ca}")
+
         set_loglevel(settings["LOGLEVEL"])
-        syslog.syslog(syslog.LOG_DEBUG, "Settings: {}".format(settings))
-        url_prefix = f'http://{settings["DOMOTICZ"]}/json.htm?type=command&param='    
+        url_prefix = f'{protocol}://{settings["DOMOTICZ"]}/json.htm?type=command&param='
     except FileNotFoundError:
         syslog.syslog(syslog.LOG_ERR, "Configuration file {} not found".format(CONFIG))
         exit(4)
@@ -269,8 +313,8 @@ except OSError as E:
     # 113 - no route to host because HOST = 192.168.1.32 while mochad 192.168.1.23
     # time out because HOST = 192.18.1.32  where mochad  192.168.1.23
     # HTTP errors will also transit through this exception handler
-    syslog.syslog(syslog.LOG_ERR, f"OS error: {E}")  
-    exit(2)    
+    syslog.syslog(syslog.LOG_ERR, f"OS error: {E}")
+    exit(2)
 except Exception as E:
     syslog.syslog(syslog.LOG_ERR, f"Exception: {repr(E)}")
     exit(3)
