@@ -2,8 +2,8 @@
 #
 # mochas - Domoticz Mochad bridge assistant
 #
-# A script to handle X10 bright/dim RF packets for dimmable devices in Domoticz
-# version 0.4 (2024-03-02)
+# A script to handle X10 bright/dim packets for dimmable devices in Domoticz
+# version 0.5 (2024-03-10)
 #
 # Copyright (c) 2024 sigmdel <https://sigmdel.ca>
 # This software is placed in the public domain. Where this is not legally
@@ -138,9 +138,10 @@ def update_level(unit, delta):
     syslog.syslog(syslog.LOG_INFO, f"level of dimmer {unit} (idx={currentIdx}) changed from {oldLevel} to {newLevel}")
     return newLevel
 
-# Syntax of Rx RF packets
+# Syntax of Rx RF/PL packets
 #
 # 0     1        2  3  4          5  6     7
+# 02/20 18:53:40 Rx PL HouseUnit: J1 Func: Off
 # 02/20 18:53:40 Rx RF HouseUnit: J3 Func: On
 # 02/20 19:13:08 Rx RF House:     J  Func: Bright
 #
