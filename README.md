@@ -30,9 +30,9 @@ The `mochas` add-on service has been used with a CM15A controller which handles 
     02/01 18:57:11 Rx RF HouseUnit: J1 Func: On
     02/01 18:57:15 Rx PL HouseUnit: J3 Func: On
 
-then, starting with version 0.4, `mochas` should also work with power line X10 packets sent by `mochad` connected ot a CM15A. Again, this has not been tested.
+then, starting with version 0.4, `mochas` should also work with power line X10 packets sent by `mochad` if connected to a CM15A. Again, this has not been tested.
 
-Starting with version 0.5 `mochas` offers support for the provisions for [security](https:////www.domoticz.com/wiki/Security) introduced in Domoticz 2023.1.
+Starting with version 0.5 `mochas` offers support for the  [security](https:////www.domoticz.com/wiki/Security) provisions introduced in Domoticz 2023.1.
 
 It remains the case that only IPv4 host addresses are used.
 
@@ -42,7 +42,7 @@ Testing was done on a first generation Raspberry Pi B circa 2011 running both `m
 
 By default, `mochas` assumes Domoticz security settings are set at the lowest possible level. No user name and password are provided when using the Domoticz API with plain text HTTP requests. For this to work `Domoticz` and `mochas` must be on the same subnet which, in turn, must be included in the **Trusted Networks (no username/password)** in the `Domoticz Security` settings.
 
-With version 0.5, `mochas` no longer needs to be on a trusted network. In that case, HTTP or HTTPS requests send to Domoticz must contain the name and password of a [Domoticz user with admin rights](https://www.domoticz.com/wiki/Security#Users). The credentials must be a "username:password" base64 encoded string specified as an option in the `mochas.json` configuration file.
+With version 0.5, `mochas` no longer needs to be on a trusted network. In that case, HTTP or HTTPS requests sent to Domoticz must contain the name and password of a [Domoticz user with admin rights](https://www.domoticz.com/wiki/Security#Users). The credentials must be a "username:password" base64 encoded string specified as an option in the `mochas.json` configuration file.
 
 ```json
 "CREDS64": "cG9uZG1pc3Q6c2VhYnJlYXpl"
